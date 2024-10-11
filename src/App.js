@@ -7,9 +7,24 @@ import React from 'react'
 function App() {
   const [links, setLinks] = React.useState([]);
 
-  const handleLinkPaste = (link) => {
-    setLinks([...links, { link, position: { x: 100, y: 100 } }]);
+  const handleLinkPaste = (data, event) => {
+    const newLink = {
+      link: data.text,
+      position: { x: 100, y: 100 + links.length * 300 } // Adjust position for each new link
+    };
+    setLinks([...links, newLink]);
   };
+
+  const embeddedLinkElements = links.map((linkData, index) => ({
+    type: "embeddable",
+    x: linkData.position.x,
+    y: linkData.position.y,
+    width: 331,
+    height: 271,
+    link: linkData.link,
+    id: `embeddedLink-${index}`,
+  }));
+
   const elements = convertToExcalidrawElements([
     {
       type: "rectangle",
@@ -96,7 +111,9 @@ function App() {
       startBinding: "TutorialA",
       endBinding: "TutorialB"
     },
+    ...embeddedLinkElements
   ]);
+
   return (
     <div style={{ height: "500px" }}>
       <Excalidraw
@@ -105,6 +122,7 @@ function App() {
           appState: { zenModeEnabled: true, viewBackgroundColor: "#a5d8ff" },
           scrollToContent: true,
         }}
+        onPaste={handleLinkPaste}
       />
     </div>
   );
