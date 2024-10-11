@@ -1,0 +1,4 @@
+Auto-saving of notes and progress tracking for users as they move through tutorials.
+Interactive prompts or quizzes within each tutorial box to check comprehension.
+A collapsible map or flowchart view showing how tutorials are connected, giving a clear sense of structure and progress.
+Support for real-time collaboration, allowing multiple users to interact with the same tutorial space.
