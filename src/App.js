@@ -1,129 +1,125 @@
 import logo from './logo.svg';
 import './App.css';
-import { Excalidraw } from "@excalidraw/excalidraw";
+import { Excalidraw, useDevice, Footer, MainMenu } from "@excalidraw/excalidraw";
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
-import React from 'react'
+import React, { useState, useEffect } from 'react'
+import { exportToCanvas } from "@excalidraw/excalidraw";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { db, storage } from "./firebase"; // Make sure to export storage from your firebase.js file
 
 function App() {
-  const [links, setLinks] = React.useState([]);
+  const [links, setLinks] = useState([]);
+  const [excalidrawAPI, setExcalidrawAPI] = useState(null);
+  const [sceneData, setSceneData] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [canvasUrl, setCanvasUrl] = useState("");
 
   const handleLinkPaste = (data, event) => {
-    const newLink = {
-      link: data.text,
-      position: { x: 100, y: 100 + links.length * 300 } // Adjust position for each new link
-    };
-    setLinks([...links, newLink]);
+    console.log("TODO Create new link");
   };
 
   const embeddedLinkElements = links.map((linkData, index) => ({
     type: "embeddable",
     x: linkData.position.x,
-    y: linkData.position.y,
+    // y: linkData.position.y,
+    y: 100,
     width: 331,
     height: 271,
     link: linkData.link,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 1,
+    opacity: 100,
+    groupId: "embeddedLinkGroup",
+
     id: `embeddedLink-${index}`,
   }));
 
-  const elements = convertToExcalidrawElements([
-    {
-      type: "rectangle",
-      x: 40, // 110 + 200
-      y: 110,
-      width: 280,
-      height: 100,
-      id: "1",
-    },
-    {
-      type: "rectangle",
-      x: 40, // 110 + 200
-      y: 220,
-      width: 280,
-      height: 100,
-      id: "2",
-    },
-    {
-      type: "rectangle",
-      x: 40, // 110 + 200
-      y: 330,
-      width: 280,
-      height: 100,
-      id: "3",
-    },
-    {
-      type: "frame",
-      children: ["1", "2", "3"],
-      name: "Tutorial A",
-      id: "TutorialA",
-      x: 240, // 40 + 200
-      y: 330,
-      boundElements: [
-        {
-          "id": "ABArrow",
-          "type": "arrow"
+  
+
+  const updateScene = () => {
+    if (!excalidrawAPI) return;
+    const sceneData = {
+      elements: excalidrawAPI.getSceneElements(),
+      appState: excalidrawAPI.getAppState(),
+      // files: excalidrawAPI.setFiles(),
+    };
+    excalidrawAPI.updateScene(sceneData);
+    saveSceneToFirestore(sceneData); // Save scene to Firestore
+  };
+  
+  useEffect(() => {
+    console.log("Component mounted");
+  }, []);
+
+  useEffect(() => {
+    if (excalidrawAPI) {
+      loadSceneFromFirestore();
+    }
+  }, [excalidrawAPI]);
+
+  const saveSceneToFirestore = async (sceneData) => {
+    try {
+      const sceneRef = doc(db, "scenes", "currentScene");
+      await setDoc(sceneRef, { sceneData: JSON.stringify(sceneData) });
+      console.log("Scene saved to Firestore");
+    } catch (error) {
+      console.error("Error saving scene to Firestore:", error);
+    }
+  };
+
+  const loadSceneFromFirestore = async () => {
+    try {
+      const sceneRef = doc(db, "scenes", "currentScene");
+      const sceneDoc = await getDoc(sceneRef);
+      if (sceneDoc.exists()) {
+        const loadedSceneData = JSON.parse(sceneDoc.data().sceneData);
+        setSceneData(loadedSceneData);
+        if (excalidrawAPI) {
+          excalidrawAPI.updateScene(loadedSceneData);
         }
-      ],
-    },
-    {
-      type: "rectangle",
-      x: 460, // 260 + 200
-      y: 110,
-      width: 280,
-      height: 100,
-      id: "4",
-    },
-    {
-      type: "rectangle",
-      x: 460, // 260 + 200
-      y: 220,
-      width: 280,
-      height: 100,
-      id: "5",
-    },
-    {
-      type: "rectangle",
-      x: 460, // 260 + 200
-      y: 330,
-      width: 280,
-      height: 100,
-      id: "6",
-    },
-    {
-      type: "frame",
-      children: ["4", "5", "6"],
-      name: "Tutorial B",
-      id: "TutorialB",
-      x: 460, // 260 + 200
-      y: 330,
-      boundElements: [
-        {
-          "id": "ABArrow",
-          "type": "arrow"
-        }
-      ],
-    },
-    {
-      type: "arrow",
-      id: "ABArrow",
-      x: 360, // 160 + 200
-      y: 420,
-      strokeColor: "#e67700",
-      startBinding: "TutorialA",
-      endBinding: "TutorialB"
-    },
-    ...embeddedLinkElements
-  ]);
+        console.log("Scene loaded from Firestore");
+      } else {
+        console.log("No scene found in Firestore");
+      }
+    } catch (error) {
+      console.error("Error loading scene from Firestore:", error);
+    }
+  };
 
   return (
-    <div style={{ height: "500px" }}>
+    <div style={{ height: "100vh", width: "100vw", overflow: "hidden" }}>
       <Excalidraw
-        initialData={{
-          elements,
-          appState: { zenModeEnabled: true, viewBackgroundColor: "#a5d8ff" },
+        initialData={sceneData || {
+          appState: {
+            viewBackgroundColor: "#edf2ff",
+            collaborators: [],
+            zenModeEnabled: false,
+          },
           scrollToContent: true,
         }}
         onPaste={handleLinkPaste}
-      />
+        excalidrawAPI={(api) => setExcalidrawAPI(api)}
+        viewBackgroundColor="#edf2ff"
+        UIOptions={{
+          autoResize: true,
+        }}
+        zenModeEnabled={false}
+        gridModeEnabled={true}
+      >
+        <Footer>
+          <button
+            className="custom-footer"
+            onClick={() => updateScene()}
+          >
+            updateScene
+          </button>
+        </Footer>
+      </Excalidraw>
     </div>
   );
 }
