@@ -127,7 +127,7 @@ function App() {
     }
     try {
       // Load backed up files from storage
-      let loadedFile = {};
+      let loadedFiles = [];
       const storageRef = ref(storage);
       const backupsRef = ref(storageRef, 'backups');
       const backupsList = await listAll(backupsRef);
@@ -142,12 +142,13 @@ function App() {
           await new Promise((resolve, reject) => {
             reader.onload = () => {
               // Create a single file object
-              loadedFile = {
+              loadedFiles.push({
                 id: fileRef.name,
                 mimeType: blob.type,
                 dataURL: reader.result,
                 created: Date.now()
-              };
+              }
+            );
               resolve();
             };
             reader.onerror = reject;
@@ -155,13 +156,13 @@ function App() {
           });
           
           console.log(`Loaded file: ${fileRef.name}`);
-          console.log("files: ", loadedFile)
+          console.log("files: ", loadedFiles)
         } catch (error) {
           console.error(`Error loading file ${fileRef.name}:`, error);
         }
       }
 
-      excalidrawAPI.addFiles(loadedFile);
+      excalidrawAPI.addFiles(loadedFiles); // FIXME
       console.log("Files added to scene");
     }
     catch (error){
