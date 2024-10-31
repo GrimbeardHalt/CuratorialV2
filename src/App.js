@@ -5,8 +5,10 @@ import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import React, { useState, useEffect } from 'react'
 import { exportToCanvas } from "@excalidraw/excalidraw";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { ref, uploadString, getDownloadURL, listAll } from "firebase/storage";
 import { db, storage } from "./firebase"; // Make sure to export storage from your firebase.js file
+import { debounce } from 'lodash';
+
 
 function App() {
   const [links, setLinks] = useState([]);
@@ -41,38 +43,72 @@ function App() {
 
   
 
-  const updateScene = () => {
+  const debouncedUpdateScene = debounce(() => {
     if (!excalidrawAPI) return;
     const sceneData = {
       elements: excalidrawAPI.getSceneElements(),
       appState: excalidrawAPI.getAppState(),
-      // files: excalidrawAPI.setFiles(),
     };
+    const files = {
+      files: excalidrawAPI.getFiles(),
+    }
     excalidrawAPI.updateScene(sceneData);
-    saveSceneToFirestore(sceneData); // Save scene to Firestore
-  };
+    saveSceneToFirestore(sceneData);
+    // saveFileToFirestore(files);
+  }, 1000); // Adjust the delay as needed
   
   useEffect(() => {
     console.log("Component mounted");
   }, []);
 
   useEffect(() => {
+    console.log("Loaded from backend")
     if (excalidrawAPI) {
       loadSceneFromFirestore();
     }
   }, [excalidrawAPI]);
+  const saveSceneToFirestore = async () => {
+    if (!excalidrawAPI) return;
 
-  const saveSceneToFirestore = async (sceneData) => {
     try {
+      const sceneData = excalidrawAPI.getSceneElements();
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+
+      const fullSceneData = {
+        elements: sceneData,
+        appState,
+      };
+
       const sceneRef = doc(db, "scenes", "currentScene");
-      await setDoc(sceneRef, { sceneData: JSON.stringify(sceneData) });
+      await setDoc(sceneRef, { sceneData: JSON.stringify(fullSceneData) });
       console.log("Scene saved to Firestore");
+      // Backup files after saving scene
+      await backupFiles(files);
     } catch (error) {
       console.error("Error saving scene to Firestore:", error);
     }
   };
 
+  const backupFiles = async (files) => {
+    console.log("inside backup files")
+    if (!sceneData || !files) return;
+
+    for (const [fileId, fileData] of Object.entries(files)) {
+      if (fileData.dataURL) {
+        try {
+          const storageRef = ref(storage, `backups/${fileId}`);
+          await uploadString(storageRef, fileData.dataURL, 'data_url');
+          console.log(`Backed up file: ${fileId}`);
+        } catch (error) {
+          console.error(`Error backing up file ${fileId}:`, error);
+        }
+      }
+    }
+  };
+
   const loadSceneFromFirestore = async () => {
+    console.log("Loading Scene")
     try {
       const sceneRef = doc(db, "scenes", "currentScene");
       const sceneDoc = await getDoc(sceneRef);
@@ -89,7 +125,50 @@ function App() {
     } catch (error) {
       console.error("Error loading scene from Firestore:", error);
     }
+    try {
+      // Load backed up files from storage
+      let loadedFile = {};
+      const storageRef = ref(storage);
+      const backupsRef = ref(storageRef, 'backups');
+      const backupsList = await listAll(backupsRef);
+      
+      for (const fileRef of backupsList.items) {
+        try {
+          const url = await getDownloadURL(fileRef);
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          
+          await new Promise((resolve, reject) => {
+            reader.onload = () => {
+              // Create a single file object
+              loadedFile = {
+                id: fileRef.name,
+                mimeType: blob.type,
+                dataURL: reader.result,
+                created: Date.now()
+              };
+              resolve();
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          
+          console.log(`Loaded file: ${fileRef.name}`);
+          console.log("files: ", loadedFile)
+        } catch (error) {
+          console.error(`Error loading file ${fileRef.name}:`, error);
+        }
+      }
+
+      excalidrawAPI.addFiles(loadedFile);
+      console.log("Files added to scene");
+    }
+    catch (error){
+      console.error("Error loading files: ", error);
+    }
   };
+
 
   return (
     <div style={{ height: "100vh", width: "100vw", overflow: "hidden" }}>
@@ -114,7 +193,7 @@ function App() {
         <Footer>
           <button
             className="custom-footer"
-            onClick={() => updateScene()}
+            onClick={() => debouncedUpdateScene()}
           >
             updateScene
           </button>
